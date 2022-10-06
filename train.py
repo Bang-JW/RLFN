@@ -58,7 +58,7 @@ def validation():
 
 def checkpoint(epoch):
 
-    model_folder = "model_zoo/model_x{}_/".format(upscale_factor)
+    model_folder = "model_zoo/model_x{}_/".format(args.upscale_factor)
     model_out_path = model_folder + "epoch_{}.pth".format(epoch)
 
     if not os.path.exists(model_folder):
