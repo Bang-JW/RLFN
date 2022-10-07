@@ -10,6 +10,7 @@ import numpy as np
 from math import log10
 import time
 from options import args
+import csv
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -24,69 +25,80 @@ criterion = torch.nn.L1Loss()
 optimizer = torch.optim.Adam(model.parameters(), lr=5e-4)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1000, gamma=0.5)
 
+
 def train(epoch):
     epoch_loss = 0
     for iteration, (lr, hr) in enumerate(train_dataloader):
         lr, hr = lr.to(device), hr.to(device)
         optimizer.zero_grad()
         prediction = model(lr)
-        if iteration == 0 :
-            print(lr.shape)
-            print(prediction.shape)
-            print(hr.shape)
         loss = criterion(prediction, hr)
         epoch_loss += loss.item()
         loss.backward()
         scheduler.step()
 
-        print("===> Epoch[{}]({}/{}): Loss: {:.4f}".format(epoch, iteration, len(train_dataloader), loss.item()))
+        print(f"===> Epoch[{epoch}]({iteration}/{len(train_dataloader)}): Loss: {loss.item():.4f}")
 
-    print("===> Epoch {} Complete: Avg. Loss: {:.4f}".format(epoch, epoch_loss / len(train_dataloader)))
+    avg_loss = epoch_loss / len(train_dataloader)
+    print(f"===> Epoch {epoch} Complete: Avg. Loss: {avg_loss:.4f}")
+    return avg_loss
 
 
 def validation():
-    avg_psnr = 0
+    sum_psnr = 0
     with torch.no_grad():
         for batch in eval_dataloader:
             lr, hr = batch[0].to(device), batch[1].to(device)
             prediction = model(lr)
             mse = criterion(prediction, hr)
-            psnr = 10 *log10(1 / mse.item())
-            avg_psnr += psnr
+            psnr = 10 * log10(1 / mse.item())
+            sum_psnr += psnr
 
-    print("===> Avg. PSNR: {:.4f} dB".format(avg_psnr / len(eval_dataloader)))
+    avg_psnr = sum_psnr / len(eval_dataloader)
+    print(f"===> Avg. PSNR: {avg_psnr:.4f} dB")
+    return avg_psnr
 
-def checkpoint(epoch):
 
-    model_folder = "model_zoo/model_x{}_/".format(args.upscale_factor)
+def checkpoint(epoch, model_folder):
     model_out_path = model_folder + "epoch_{}.pth".format(epoch)
+    torch.save(model.state_dict(), model_out_path)
+    print(f"Checkpoint saved to {model_out_path}")
 
+
+def make_log_file(model_folder):
+    log_path = model_folder + 'log.csv'
+    with open(log_path, 'w', newline='') as logfile:
+        writer = csv.writer(logfile)
+        writer.writerow(('epoch', 'loss', 'psnr', 'time'))
+    return log_path
+
+
+def logging(file_path, epoch, loss, psnr, time):
+    with open(file_path, 'w', newline='') as logfile:
+        writer = csv.writer(file_path)
+        writer.writerow((epoch, loss, psnr, time))
+
+
+def start_train():
+    model_folder = f"model_zoo/model_x{args.upscale_factor}_/"
     if not os.path.exists(model_folder):
         os.makedirs(model_folder)
 
-    torch.save(model.state_dict(), model_out_path)
-    print("Checkpoint saved to {}".format(model_out_path))
+    log_path = make_log_file(model_folder)
 
-
-
-
-    """model_out_path = "model_zoo/model_epoch_{}_x{}.pth".format(epoch, upscale_factor)
-    torch.save(model.state_dict(), model_out_path)
-    print("Checkpoint saved to {}".format(model_out_path))"""
-
-def start_train():
     start_time = time.time()
     for epoch in range(1, args.epochs + 1):
         start_time = time.time()
-        train(epoch)
-        validation()
-        checkpoint(epoch)
-
-        print("elapsed time :",(time.time() - start_time), "sec")
+        avg_loss = train(epoch=epoch)
+        avg_psnr = validation()
+        checkpoint(epoch=epoch, model_folder=model_folder)
+        elapsed_time = time.time() - start_time
+        logging(log_path, epoch, avg_loss, avg_psnr, elapsed_time)
+        print(f"elapsed time : {str(elapsed_time):.3f}sec")
 
     end_time = time.time()
+    print(f"Average elapsed time : {str((end_time - start_time) / args.epochs):.3f}sec")
 
-    print("Average elapsed time :",(end_time - start_time) // epochs, "sec")
 
 if __name__ == '__main__':
     start_train()
@@ -104,9 +116,6 @@ def imshow(img, name):
 
     cv2.imshow(name, result_img)
     cv2.waitKey(0)
-
-
-
 
 sr = None
 for iteration, batch in enumerate(train_dataloader, 1):
