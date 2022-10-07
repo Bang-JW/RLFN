@@ -9,24 +9,16 @@ import cv2
 import numpy as np
 from math import log10
 import time
+from options import args
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-image_size=256
-upscale_factor=2
-aug_factor=4
-batch_size=16
-epochs = 3 # 바궈라~~
-#GCP 안에서 컴퓨터 폴더 접근 가능?? 폴더를 parser로 하나 배는게 어떤지???
-#parser로 뺀다는건 바뀔 수 있는 가능석이 있음
-#folder는 바뀌지 않는거
-
-train_dataloader = utils_data.set_dataloader(image_size=image_size, upscale_factor=upscale_factor, aug_factor=aug_factor, batch_size=batch_size, datatype='train')
-eval_dataloader = utils_data.set_dataloader(image_size=image_size, upscale_factor=upscale_factor, aug_factor=aug_factor, batch_size=batch_size, datatype='valid')
+train_dataloader = utils_data.set_dataloader(image_size=args.image_size, upscale_factor=args.upscale_factor, aug_factor=args.aug_factor, batch_size=args.batch_size, datatype='train')
+eval_dataloader = utils_data.set_dataloader(image_size=args.image_size, upscale_factor=args.upscale_factor, aug_factor=args.aug_factor, batch_size=args.batch_size, datatype='valid')
 
 
 print('===> Building model')
-model = rlfn.RLFN(upscale=upscale_factor).to(device)
+model = rlfn.RLFN(upscale=args.upscale_factor).to(device)
 
 criterion = torch.nn.L1Loss()
 optimizer = torch.optim.Adam(model.parameters(), lr=5e-4)
@@ -66,7 +58,7 @@ def validation():
 
 def checkpoint(epoch):
 
-    model_folder = "model_zoo/model_x{}_/".format(upscale_factor)
+    model_folder = "model_zoo/model_x{}_/".format(args.upscale_factor)
     model_out_path = model_folder + "epoch_{}.pth".format(epoch)
 
     if not os.path.exists(model_folder):
@@ -82,20 +74,22 @@ def checkpoint(epoch):
     torch.save(model.state_dict(), model_out_path)
     print("Checkpoint saved to {}".format(model_out_path))"""
 
-
-start_time = time.time()
-for epoch in range(1, epochs + 1):
+def start_train():
     start_time = time.time()
-    train(epoch)
-    validation()
-    checkpoint(epoch)
+    for epoch in range(1, args.epochs + 1):
+        start_time = time.time()
+        train(epoch)
+        validation()
+        checkpoint(epoch)
 
-    print("elapsed time :",(time.time() - start_time), "sec")
+        print("elapsed time :",(time.time() - start_time), "sec")
 
-end_time = time.time()
+    end_time = time.time()
 
-print("Average elapsed time :",(end_time - start_time) // epochs, "sec")
+    print("Average elapsed time :",(end_time - start_time) // epochs, "sec")
 
+if __name__ == '__main__':
+    start_train()
 
 
 """이미지 확인
