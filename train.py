@@ -75,7 +75,7 @@ def make_log_file(model_folder):
 
 def logging(file_path, epoch, loss, psnr, time):
     with open(file_path, 'w', newline='') as logfile:
-        writer = csv.writer(file_path)
+        writer = csv.writer(logfile)
         writer.writerow((epoch, loss, psnr, time))
 
 
