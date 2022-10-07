@@ -89,13 +89,14 @@ def checkpoint(epoch, model_folder, loss, psnr):
     print(f"Checkpoint saved to {model_out_path}")
 
 
-def make_log_file(model_folder, type='loss', load=False):
+def make_log_file(model_folder, type='loss', load_num=-1):
     if type not in ('loss', 'psnr'):
         print('check your param "type"')
         print(f'expected : loss or psnr, given : {type}')
 
     log_path = model_folder + f'{type}_log.csv'
-    if not load:
+    # 저장된 모델을 불러오지 않는 경우
+    if load_num == -1:
         with open(log_path, 'w', newline='') as logfile:
             writer = csv.writer(logfile)
             header = None
@@ -104,6 +105,24 @@ def make_log_file(model_folder, type='loss', load=False):
             elif type == 'psnr':
                 header = ('epoch', 'psnr', 'time')
             writer.writerow(header)
+    # 저장된 모델을 불러오는 경우
+    # epoch_23 모델을 불러오는 경우 epoch_24 부터의 기록은 지우기 위한 코드
+    else:
+        # [:-4] : .csv 떼어내기
+        tmp_log_path = log_path[:-4] + '_tmp' + '.csv'
+        with open(log_path, 'r', newline='') as readfile:
+            reader = csv.reader(readfile)
+            with open(tmp_log_path, 'w', newline='') as writefile:
+                writer = csv.writer(writefile)
+                # header 옮겨적기기
+                writer.writerow(next(reader))
+                for row in reader:
+                    # row[0]에 epoch 정보가 저장되어 있음
+                    if int(row[0]) > load_num:
+                        break
+                    writer.writerow(row)
+        os.rename(tmp_log_path, log_path)
+        
     return log_path
 
 
@@ -143,8 +162,8 @@ def start_train():
     if not os.path.exists(model_folder):
         os.makedirs(model_folder)
 
-    loss_log_path = make_log_file(model_folder, type='loss', load=load)
-    psnr_log_path = make_log_file(model_folder, type='psnr', load=load)
+    loss_log_path = make_log_file(model_folder, type='loss', load_num=args.load_num)
+    psnr_log_path = make_log_file(model_folder, type='psnr', load_num=args.load_num)
 
     total_train_time = 0
     for epoch in range(args.load_num + 1, args.epochs):
