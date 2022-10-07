@@ -26,9 +26,11 @@ optimizer = torch.optim.Adam(model.parameters(), lr=5e-4)
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.step_size, gamma=0.5)
 
 
-def train(epoch):
+def train(epoch, loss_log_path):
     epoch_loss = 0
     for iteration, (lr, hr) in enumerate(train_dataloader):
+        start_time = time.time()
+
         lr, hr = lr.to(device), hr.to(device)
         optimizer.zero_grad()
         prediction = model(lr)
@@ -37,11 +39,16 @@ def train(epoch):
         loss.backward()
         optimizer.step()
 
+        logging(loss_log_path, type='loss',
+                epoch=epoch,
+                iteration=iteration,
+                loss=loss.item(),
+                time=time.time() - start_time)
+
         print(f"===> Epoch[{epoch}]({iteration}/{len(train_dataloader)}): Loss: {loss.item():.4f}")
 
     avg_loss = epoch_loss / len(train_dataloader)
     print(f"===> Epoch {epoch} Complete: Avg. Loss: {avg_loss:.4f}")
-    return avg_loss
 
 
 def validation():
@@ -65,18 +72,40 @@ def checkpoint(epoch, model_folder):
     print(f"Checkpoint saved to {model_out_path}")
 
 
-def make_log_file(model_folder):
-    log_path = model_folder + 'log.csv'
+def make_log_file(model_folder, type='loss'):
+    if type not in ('loss', 'psnr'):
+        print('check your param "type"')
+        print(f'expected : loss or psnr, given : {type}')
+
+    log_path = model_folder + f'{type}_log.csv'
     with open(log_path, 'w', newline='') as logfile:
         writer = csv.writer(logfile)
-        writer.writerow(('epoch', 'loss', 'psnr', 'time'))
+        header = None
+        if type == 'loss':
+            header = ('epoch', 'iteration', 'loss', 'time')
+        elif type == 'psnr':
+            header = ('epoch', 'psnr', 'time')
+        writer.writerow(header)
     return log_path
 
 
-def logging(file_path, epoch, loss, psnr, time):
+def logging(file_path, type='loss', **kwargs):
     with open(file_path, 'a', newline='') as logfile:
         writer = csv.writer(logfile)
-        writer.writerow((epoch, loss, psnr, time))
+        row = None
+
+        epoch = kwargs['epoch']
+        time = kwargs['time']
+        if type == 'loss':
+            iteration = kwargs['iteration']
+            loss = kwargs['loss']
+            row = (epoch, iteration, loss, time)
+        elif type == 'psnr':
+            psnr = kwargs['psnr']
+            row = (epoch, psnr, time)
+        if row is None:
+            return
+        writer.writerow(row)
 
 
 def print_args(args):
@@ -95,18 +124,24 @@ def start_train():
     if not os.path.exists(model_folder):
         os.makedirs(model_folder)
 
-    log_path = make_log_file(model_folder)
+    loss_log_path = make_log_file(model_folder, type='loss')
+    psnr_log_path = make_log_file(model_folder, type='psnr')
 
     start_time = time.time()
     for epoch in range(1, args.epochs + 1):
         start_time = time.time()
-        avg_loss = train(epoch=epoch)
-        avg_psnr = validation()
+        train(epoch=epoch, loss_log_path=loss_log_path)
+        psnr = validation()
         scheduler.step()
         checkpoint(epoch=epoch, model_folder=model_folder)
+
         elapsed_time = time.time() - start_time
-        logging(log_path, epoch, avg_loss, avg_psnr, elapsed_time)
         print(f"elapsed time : {elapsed_time:.3f}sec")
+
+        logging(psnr_log_path, type='psnr',
+                epoch=epoch,
+                psnr=psnr,
+                time=elapsed_time)
 
     end_time = time.time()
     print(f"Average elapsed time : {(end_time - start_time) / args.epochs:.3f}sec")
