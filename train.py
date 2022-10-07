@@ -23,7 +23,7 @@ model = rlfn.RLFN(upscale=args.upscale_factor).to(device)
 
 criterion = torch.nn.L1Loss()
 optimizer = torch.optim.Adam(model.parameters(), lr=5e-4)
-scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=200, gamma=0.5)
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.step_size, gamma=0.5)
 
 
 def train(epoch):
@@ -79,7 +79,18 @@ def logging(file_path, epoch, loss, psnr, time):
         writer.writerow((epoch, loss, psnr, time))
 
 
+def print_args(args):
+    print(f"crop size : {args.image_size}")
+    print(f"aug factor : {args.aug_factor}")
+    print(f"upscale factor : {args.upscale_factor}")
+    print(f"batch size : {args.batch_size}")
+    print(f"epochs : {args.epochs}")
+    print(f"step size : {args.step_size}")
+
+
 def start_train():
+    print_args(args)
+
     model_folder = f"model_zoo/model_x{args.upscale_factor}_/"
     if not os.path.exists(model_folder):
         os.makedirs(model_folder)
