@@ -20,7 +20,7 @@ class Dataset(object):
         self.lr_transforms = transforms.Compose([
             transforms.ToPILImage(),
             transforms.Resize((image_size // upscale_factor, image_size // upscale_factor),
-                              interpolation=Image.BICUBIC),
+                              interpolation=transforms.InterpolationMode.BICUBIC),
             transforms.ToTensor()
         ])
 
@@ -42,7 +42,7 @@ class Dataset(object):
         return len(self.filenames)
 
 
-def set_dataloader(image_size, upscale_factor, aug_factor, batch_size, datatype = 'train_HR'):
+def set_dataloader(image_size, upscale_factor, aug_factor, batch_size, datatype = 'train'):
     #/home/shh950422/images/train/DIV2K_train_HR/
     #root_dir = 'C:\\Users\\bjw97\PycharmProjects\RLFN_Final\data'
     root_dir = '/home/shh950422/images/train/' 
@@ -50,7 +50,7 @@ def set_dataloader(image_size, upscale_factor, aug_factor, batch_size, datatype 
 
     image_size = calculate_valid_crop_size(image_size, upscale_factor)
     dataset = Dataset(data_dir, image_size, upscale_factor)
-    if datatype == 'train_HR':
+    if datatype == 'train':
         dataset = ConcatDataset([dataset] * aug_factor)
     dataloader = DataLoader(
         dataset=dataset,

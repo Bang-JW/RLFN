@@ -23,8 +23,18 @@ model = rlfn.RLFN(upscale=args.upscale_factor).to(device)
 
 criterion = torch.nn.L1Loss()
 optimizer = torch.optim.Adam(model.parameters(), lr=5e-4)
-scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.step_size, gamma=0.5)
 
+if args.load_num != -1:
+    PATH = f'model_zoo/model_x{args.upscale_factor}_/epoch_{args.load_num}.pth'
+    if not os.path.isfile(PATH):
+        raise FileNotFoundError(f'given num is {args.load_num}. But {PATH} does not exist')
+    
+    print('=====> Loading model')
+    checkpoint = torch.load(PATH)
+    model.load_state_dict(checkpoint['model_state_dict'])
+    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.step_size, gamma=0.5, last_epoch=args.load_num)
 
 def train(epoch, loss_log_path):
     epoch_loss = 0
@@ -49,6 +59,7 @@ def train(epoch, loss_log_path):
 
     avg_loss = epoch_loss / len(train_dataloader)
     print(f"===> Epoch {epoch} Complete: Avg. Loss: {avg_loss:.4f}")
+    return avg_loss
 
 
 def validation():
@@ -66,26 +77,33 @@ def validation():
     return avg_psnr
 
 
-def checkpoint(epoch, model_folder):
+def checkpoint(epoch, model_folder, loss, psnr):
     model_out_path = model_folder + "epoch_{}.pth".format(epoch)
-    torch.save(model.state_dict(), model_out_path)
+    torch.save({
+        'epoch': epoch,
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+        'loss': loss,
+        'psnr': psnr,
+        }, model_out_path)
     print(f"Checkpoint saved to {model_out_path}")
 
 
-def make_log_file(model_folder, type='loss'):
+def make_log_file(model_folder, type='loss', load=False):
     if type not in ('loss', 'psnr'):
         print('check your param "type"')
         print(f'expected : loss or psnr, given : {type}')
 
     log_path = model_folder + f'{type}_log.csv'
-    with open(log_path, 'w', newline='') as logfile:
-        writer = csv.writer(logfile)
-        header = None
-        if type == 'loss':
-            header = ('epoch', 'iteration', 'loss', 'time')
-        elif type == 'psnr':
-            header = ('epoch', 'psnr', 'time')
-        writer.writerow(header)
+    if not load:
+        with open(log_path, 'w', newline='') as logfile:
+            writer = csv.writer(logfile)
+            header = None
+            if type == 'loss':
+                header = ('epoch', 'iteration', 'loss', 'time')
+            elif type == 'psnr':
+                header = ('epoch', 'psnr', 'time')
+            writer.writerow(header)
     return log_path
 
 
@@ -119,32 +137,41 @@ def print_args(args):
 
 def start_train():
     print_args(args)
+    load = args.load_num != 0
 
     model_folder = f"model_zoo/model_x{args.upscale_factor}_/"
     if not os.path.exists(model_folder):
         os.makedirs(model_folder)
 
-    loss_log_path = make_log_file(model_folder, type='loss')
-    psnr_log_path = make_log_file(model_folder, type='psnr')
+    loss_log_path = make_log_file(model_folder, type='loss', load=load)
+    psnr_log_path = make_log_file(model_folder, type='psnr', load=load)
 
-    start_time = time.time()
-    for epoch in range(1, args.epochs + 1):
+    total_train_time = 0
+    for epoch in range(args.load_num + 1, args.epochs):
+        train_time = 0
         start_time = time.time()
-        train(epoch=epoch, loss_log_path=loss_log_path)
-        psnr = validation()
-        scheduler.step()
-        checkpoint(epoch=epoch, model_folder=model_folder)
 
-        elapsed_time = time.time() - start_time
-        print(f"elapsed time : {elapsed_time:.3f}sec")
+        loss = train(epoch=epoch, loss_log_path=loss_log_path)
+        psnr = 'skip'
+
+        train_time += time.time() - start_time
+        if epoch % 10 == 0:
+            psnr = validation()
+        start_time = time.time()
+
+        scheduler.step()
+        checkpoint(epoch=epoch, model_folder=model_folder, loss=loss, psnr=psnr)
+
+        train_time += time.time() - start_time
+        print(f"train time : {train_time:.3f}sec")
+        total_train_time += train_time
 
         logging(psnr_log_path, type='psnr',
                 epoch=epoch,
                 psnr=psnr,
-                time=elapsed_time)
+                time=train_time)
 
-    end_time = time.time()
-    print(f"Average elapsed time : {(end_time - start_time) / args.epochs:.3f}sec")
+    print(f"Average train time : {total_train_time / (args.epochs - args.load_num - 1):.3f}sec")
 
 
 if __name__ == '__main__':

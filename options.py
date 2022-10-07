@@ -7,4 +7,5 @@ parser.add_argument('--upscale_factor', type=int, default=4, help='INSERT UPSCAL
 parser.add_argument('--batch_size', type=int, default=64, help='INSERT BATCH SIZE')
 parser.add_argument('--epochs', type=int, default=1000, help='INSERT EPOCHS')
 parser.add_argument('--step_size', type=int, default=200, help='INSERT STEP SIZE')
+parser.add_argument('--load_num', type=int, default=-1, help='INSERT LOAD NUM')
 args = parser.parse_args()
