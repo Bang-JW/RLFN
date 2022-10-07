@@ -23,7 +23,7 @@ model = rlfn.RLFN(upscale=args.upscale_factor).to(device)
 
 criterion = torch.nn.L1Loss()
 optimizer = torch.optim.Adam(model.parameters(), lr=5e-4)
-scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1000, gamma=0.5)
+scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=200, gamma=0.5)
 
 
 def train(epoch):
@@ -35,7 +35,7 @@ def train(epoch):
         loss = criterion(prediction, hr)
         epoch_loss += loss.item()
         loss.backward()
-        scheduler.step()
+        optimizer.step()
 
         print(f"===> Epoch[{epoch}]({iteration}/{len(train_dataloader)}): Loss: {loss.item():.4f}")
 
@@ -74,7 +74,7 @@ def make_log_file(model_folder):
 
 
 def logging(file_path, epoch, loss, psnr, time):
-    with open(file_path, 'w', newline='') as logfile:
+    with open(file_path, 'a', newline='') as logfile:
         writer = csv.writer(logfile)
         writer.writerow((epoch, loss, psnr, time))
 
@@ -91,13 +91,14 @@ def start_train():
         start_time = time.time()
         avg_loss = train(epoch=epoch)
         avg_psnr = validation()
+        scheduler.step()
         checkpoint(epoch=epoch, model_folder=model_folder)
         elapsed_time = time.time() - start_time
         logging(log_path, epoch, avg_loss, avg_psnr, elapsed_time)
-        print(f"elapsed time : {str(elapsed_time):.3f}sec")
+        print(f"elapsed time : {elapsed_time:.3f}sec")
 
     end_time = time.time()
-    print(f"Average elapsed time : {str((end_time - start_time) / args.epochs):.3f}sec")
+    print(f"Average elapsed time : {(end_time - start_time) / args.epochs:.3f}sec")
 
 
 if __name__ == '__main__':
