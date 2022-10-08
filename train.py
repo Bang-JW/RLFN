@@ -1,27 +1,38 @@
 from utils import utils_data
 import os
-import torchvision.transforms as transforms
-from PIL import Image
 import torch
-from torch.cuda import amp
 from model import rlfn
-import cv2
-import numpy as np
 from math import log10
 import time
 from options import args
 import csv
+import cv2
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-train_dataloader = utils_data.set_dataloader(image_size=args.image_size, upscale_factor=args.upscale_factor, aug_factor=args.aug_factor, batch_size=args.batch_size, datatype='train')
-eval_dataloader = utils_data.set_dataloader(image_size=args.image_size, upscale_factor=args.upscale_factor, aug_factor=args.aug_factor, batch_size=args.batch_size, datatype='valid')
+device = torch.device('cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu')
 
+data_dir = os.getcwd() + '/data/' if args.on_local else '/home/shh950422/images/train/'
+
+train_dataloader = utils_data.set_dataloader(
+    data_dir=data_dir,
+    image_size=args.image_size,
+    upscale_factor=args.upscale_factor,
+    aug_factor=args.aug_factor,
+    batch_size=args.batch_size,
+    datatype='train')
+eval_dataloader = utils_data.set_dataloader(
+    data_dir=data_dir,
+    image_size=args.image_size,
+    upscale_factor=args.upscale_factor,
+    aug_factor=1,
+    batch_size=args.batch_size,
+    datatype='valid')
 
 print('===> Building model')
 model = rlfn.RLFN(upscale=args.upscale_factor).to(device)
 
-criterion = torch.nn.L1Loss()
+mae_loss = torch.nn.L1Loss()
+mse_loss = torch.nn.MSELoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=5e-4)
 
 if args.load_num != -1:
@@ -36,20 +47,21 @@ if args.load_num != -1:
 
 scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.step_size, gamma=0.5, last_epoch=args.load_num)
 
+
 def train(epoch, loss_log_path):
     epoch_loss = 0
     for iteration, (lr, hr) in enumerate(train_dataloader):
         start_time = time.time()
-
         lr, hr = lr.to(device), hr.to(device)
-        optimizer.zero_grad()
         prediction = model(lr)
-        loss = criterion(prediction, hr)
+        optimizer.zero_grad()
+        loss = mae_loss(prediction, hr)
         epoch_loss += loss.item()
         loss.backward()
         optimizer.step()
 
-        logging(loss_log_path, type='loss',
+        logging(loss_log_path,
+                type='loss',
                 epoch=epoch,
                 iteration=iteration,
                 loss=loss.item(),
@@ -68,7 +80,7 @@ def validation():
         for batch in eval_dataloader:
             lr, hr = batch[0].to(device), batch[1].to(device)
             prediction = model(lr)
-            mse = criterion(prediction, hr)
+            mse = mse_loss(prediction, hr)
             psnr = 10 * log10(1 / mse.item())
             sum_psnr += psnr
 
@@ -146,17 +158,18 @@ def logging(file_path, type='loss', **kwargs):
 
 
 def print_args(args):
-    print(f"crop size : {args.image_size}")
-    print(f"aug factor : {args.aug_factor}")
-    print(f"upscale factor : {args.upscale_factor}")
-    print(f"batch size : {args.batch_size}")
-    print(f"epochs : {args.epochs}")
-    print(f"step size : {args.step_size}")
+    prefix = ' ' * 7
+    print(prefix + f"platform : {'Local' if args.on_local else 'GCP'}")
+    print(prefix + f"crop size : {args.image_size}")
+    print(prefix + f"aug factor : {args.aug_factor}")
+    print(prefix + f"upscale factor : {args.upscale_factor}")
+    print(prefix + f"batch size : {args.batch_size}")
+    print(prefix + f"epochs : {args.epochs}")
+    print(prefix + f"step size : {args.step_size}")
 
 
 def start_train():
     print_args(args)
-    load = args.load_num != 0
 
     model_folder = f"model_zoo/model_x{args.upscale_factor}_/"
     if not os.path.exists(model_folder):
@@ -185,7 +198,8 @@ def start_train():
         print(f"train time : {train_time:.3f}sec")
         total_train_time += train_time
 
-        logging(psnr_log_path, type='psnr',
+        logging(psnr_log_path,
+                type='psnr',
                 epoch=epoch,
                 psnr=psnr,
                 time=train_time)
@@ -197,18 +211,8 @@ if __name__ == '__main__':
     start_train()
 
 
-"""이미지 확인
-def imshow(img, name):
-    img = img/2 + 0.5
 
-    np_img = img.numpy()
-    print(f'np_img : {np_img.shape}')
-    print((np.transpose(np_img, (1, 2, 0))).shape)
-    result_img = np.transpose(np_img, (1, 2, 0))
-    #plt.imshow(np.transpose(np_img, (1,2,0)))
 
-    cv2.imshow(name, result_img)
-    cv2.waitKey(0)
 
 sr = None
 for iteration, batch in enumerate(train_dataloader, 1):
@@ -218,9 +222,9 @@ for iteration, batch in enumerate(train_dataloader, 1):
     sr = model(input_)
     break
 
-imshow(input_[1].detach().cpu(), 'lr')
-imshow(sr[1].detach().cpu(), 'sr')
-"""
+# imshow(input_[1].detach().cpu(), 'lr')
+# imshow(sr[1].detach().cpu(), 'sr')
+
 
 
 

@@ -2,3 +2,5 @@ data/
 .idea
 venv/
 model_zoo/
+model_test/
+test_x*
