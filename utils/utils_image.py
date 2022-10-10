@@ -1,5 +1,6 @@
 import random
 import math
+import time
 
 import numpy as np
 import cv2
@@ -101,14 +102,8 @@ def degradation_bsrgan(img, scale_factor=4, lr_size=64, isp_model=None):
     hq: corresponding high-quality patch, size: (lq_patchsizexsf)X(lq_patchsizexsf)XC, range: [0, 1]
     """
     isp_prob, jpeg_prob, scale2_prob = 0.25, 0.9, 0.25
-    sf_ori = scale_factor
 
-    h1, w1 = img.shape[:2]
-    img = img.copy()[:h1 - h1 % scale_factor, :w1 - w1 % scale_factor, ...]  # mod crop
-    h, w = img.shape[:2]
-
-    if h < lr_size*scale_factor or w < lr_size*scale_factor:
-        raise ValueError(f'img size ({h1}X{w1}) is too small!')
+    img = random_crop(img, scale_factor * lr_size)
 
     hq = img.copy()
 
@@ -170,9 +165,6 @@ def degradation_bsrgan(img, scale_factor=4, lr_size=64, isp_model=None):
 
     # add final JPEG compression noise
     img = add_JPEG_noise(img)
-
-    # random crop
-    img, hq = random_crop(img, hq, sf_ori, lr_size)
 
     return img, hq
 
@@ -344,15 +336,12 @@ def add_JPEG_noise(img):
     return img
 
 
-def random_crop(lq, hq, sf=4, lr_size=64):
-    h, w = lq.shape[:2]
-    rnd_h = random.randint(0, h-lr_size)
-    rnd_w = random.randint(0, w-lr_size)
-    lq = lq[rnd_h:rnd_h + lr_size, rnd_w:rnd_w + lr_size, :]
+def random_crop(image, crop_size):
+    h, w = image.shape[:2]
+    top = random.randint(0, h - crop_size)
+    left = random.randint(0, w - crop_size)
 
-    rnd_h_H, rnd_w_H = int(rnd_h * sf), int(rnd_w * sf)
-    hq = hq[rnd_h_H:rnd_h_H + lr_size*sf, rnd_w_H:rnd_w_H + lr_size*sf, :]
-    return lq, hq
+    return image[top:top+crop_size, left:left+crop_size]
 
 
 def calculate_weights_indices(in_length, out_length, scale, kernel, kernel_width, antialiasing):
@@ -488,14 +477,21 @@ def imsave(img, img_path):
 
 # test code
 if __name__ == '__main__':
+    start_time = time.time()
+
     img = imread_uint('/Users/sinhyeonho/RLFN/data/my_picture/neemo.jpeg', 3)
     img = uint2single(img)
+
+    crop_size = 256
     scale_factor = 2
 
-    for i in range(20):
-        lr, hr = degradation_bsrgan(img, scale_factor=scale_factor, lr_size=512)
+    test_cnt = 20
+    for i in range(test_cnt):
+        lr, hr = degradation_bsrgan(img, scale_factor=scale_factor, lr_size=crop_size // scale_factor)
         print(i)
         lr_nearest = cv2.resize(single2uint(lr), (int(scale_factor*lr.shape[1]), int(scale_factor*lr.shape[0])),
                                 interpolation=cv2.INTER_CUBIC)
         img_concat = np.concatenate([lr_nearest, single2uint(hr)], axis=1)
         imsave(img_concat, str(i) + '.png')
+
+    print(f'===> Avg. runtime : {(time.time() - start_time) / test_cnt} s')
