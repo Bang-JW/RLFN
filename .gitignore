@@ -4,3 +4,5 @@ venv/
 model_zoo/
 model_test/
 test_x*
+.DS_Store
+test2.py

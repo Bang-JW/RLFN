@@ -4,58 +4,18 @@ import torch
 from model import rlfn
 from math import log10
 import time
-from options import args
+from options import args as _args
 import csv
-import cv2
 
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu')
-
-data_dir = os.getcwd() + '/data/' if args.on_local else '/home/shh950422/images/train/'
-
-train_dataloader = utils_data.set_dataloader(
-    data_dir=data_dir,
-    image_size=args.image_size,
-    upscale_factor=args.upscale_factor,
-    aug_factor=args.aug_factor,
-    batch_size=args.batch_size,
-    datatype='train')
-eval_dataloader = utils_data.set_dataloader(
-    data_dir=data_dir,
-    image_size=args.image_size,
-    upscale_factor=args.upscale_factor,
-    aug_factor=1,
-    batch_size=args.batch_size,
-    datatype='valid')
-
-print('===> Building model')
-model = rlfn.RLFN(upscale=args.upscale_factor).to(device)
-
-mae_loss = torch.nn.L1Loss()
-mse_loss = torch.nn.MSELoss()
-optimizer = torch.optim.Adam(model.parameters(), lr=5e-4)
-
-if args.load_num != -1:
-    PATH = f'model_zoo/model_x{args.upscale_factor}_/epoch_{args.load_num}.pth'
-    if not os.path.isfile(PATH):
-        raise FileNotFoundError(f'given num is {args.load_num}. But {PATH} does not exist')
-    
-    print('=====> Loading model')
-    checkpoint = torch.load(PATH)
-    model.load_state_dict(checkpoint['model_state_dict'])
-    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-
-scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.step_size, gamma=0.5, last_epoch=args.load_num)
-
-
-def train(epoch, loss_log_path):
+def train(model, loss_f, optimizer, train_dataloader, epoch, loss_log_path, device):
     epoch_loss = 0
     for iteration, (lr, hr) in enumerate(train_dataloader):
         start_time = time.time()
         lr, hr = lr.to(device), hr.to(device)
         prediction = model(lr)
         optimizer.zero_grad()
-        loss = mae_loss(prediction, hr)
+        loss = loss_f(prediction, hr)
         epoch_loss += loss.item()
         loss.backward()
         optimizer.step()
@@ -65,7 +25,7 @@ def train(epoch, loss_log_path):
                 epoch=epoch,
                 iteration=iteration,
                 loss=loss.item(),
-                time=time.time() - start_time)
+                runtime=time.time() - start_time)
 
         print(f"===> Epoch[{epoch}]({iteration}/{len(train_dataloader)}): Loss: {loss.item():.4f}")
 
@@ -74,13 +34,13 @@ def train(epoch, loss_log_path):
     return avg_loss
 
 
-def validation():
+def validation(model, loss_f, eval_dataloader, device):
     sum_psnr = 0
     with torch.no_grad():
         for batch in eval_dataloader:
             lr, hr = batch[0].to(device), batch[1].to(device)
             prediction = model(lr)
-            mse = mse_loss(prediction, hr)
+            mse = loss_f(prediction, hr)
             psnr = 10 * log10(1 / mse.item())
             sum_psnr += psnr
 
@@ -89,7 +49,7 @@ def validation():
     return avg_psnr
 
 
-def checkpoint(epoch, model_folder, loss, psnr):
+def checkpoint(model, optimizer, epoch, model_folder, loss, psnr):
     model_out_path = model_folder + "epoch_{}.pth".format(epoch)
     torch.save({
         'epoch': epoch,
@@ -144,31 +104,73 @@ def logging(file_path, type='loss', **kwargs):
         row = None
 
         epoch = kwargs['epoch']
-        time = kwargs['time']
+        runtime = kwargs['runtime']
         if type == 'loss':
             iteration = kwargs['iteration']
             loss = kwargs['loss']
-            row = (epoch, iteration, loss, time)
+            row = (epoch, iteration, loss, runtime)
         elif type == 'psnr':
             psnr = kwargs['psnr']
-            row = (epoch, psnr, time)
+            row = (epoch, psnr, runtime)
         if row is None:
             return
         writer.writerow(row)
 
 
-def print_args(args):
+def print_args(kwargs):
     prefix = ' ' * 7
-    print(prefix + f"platform : {'Local' if args.on_local else 'GCP'}")
-    print(prefix + f"crop size : {args.image_size}")
-    print(prefix + f"aug factor : {args.aug_factor}")
-    print(prefix + f"upscale factor : {args.upscale_factor}")
-    print(prefix + f"batch size : {args.batch_size}")
-    print(prefix + f"epochs : {args.epochs}")
-    print(prefix + f"step size : {args.step_size}")
+    print(prefix + f"platform : {'Local' if kwargs.on_local else 'GCP'}")
+    print(prefix + f"Random Degradation : {'ON' if kwargs.rd else 'OFF (only BICUBIC)'}")
+    print(prefix + f"crop size : {kwargs.image_size}")
+    print(prefix + f"aug factor : {kwargs.aug_factor}")
+    print(prefix + f"upscale factor : {kwargs.upscale_factor}")
+    print(prefix + f"batch size : {kwargs.batch_size}")
+    print(prefix + f"epochs : {kwargs.epochs}")
+    print(prefix + f"step size : {kwargs.step_size}")
 
 
-def start_train():
+def start_train(args):
+    device = torch.device(
+        'cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu')
+
+    data_dir = os.getcwd() + '/data/' if args.on_local else '/home/shh950422/images/train/'
+
+    train_dataloader = utils_data.set_dataloader(
+        data_dir=data_dir,
+        image_size=args.image_size,
+        upscale_factor=args.upscale_factor,
+        aug_factor=args.aug_factor,
+        batch_size=args.batch_size,
+        datatype='train',
+        random_degradation=False if not args.rd else True)
+    eval_dataloader = utils_data.set_dataloader(
+        data_dir=data_dir,
+        image_size=args.image_size,
+        upscale_factor=args.upscale_factor,
+        aug_factor=1,
+        batch_size=args.batch_size,
+        datatype='valid')
+
+    print('===> Building model')
+    model = rlfn.RLFN(upscale=args.upscale_factor).to(device)
+
+    mae_loss = torch.nn.L1Loss()
+    mse_loss = torch.nn.MSELoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=5e-4)
+
+    if args.load_num != -1:
+        PATH = f'model_zoo/model_x{args.upscale_factor}_/epoch_{args.load_num}.pth'
+        if not os.path.isfile(PATH):
+            raise FileNotFoundError(f'given num is {args.load_num}. But {PATH} does not exist')
+
+        print('=====> Loading model')
+        loaded = torch.load(PATH)
+        model.load_state_dict(loaded['model_state_dict'])
+        optimizer.load_state_dict(loaded['optimizer_state_dict'])
+
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=args.step_size, gamma=0.5,
+                                                last_epoch=args.load_num)
+
     print_args(args)
 
     model_folder = f"model_zoo/model_x{args.upscale_factor}_/"
@@ -183,16 +185,16 @@ def start_train():
         train_time = 0
         start_time = time.time()
 
-        loss = train(epoch=epoch, loss_log_path=loss_log_path)
+        loss = train(model, mae_loss, optimizer, train_dataloader, epoch, loss_log_path, device)
         psnr = 'skip'
 
         train_time += time.time() - start_time
         if epoch % 10 == 0:
-            psnr = validation()
+            psnr = validation(model, mse_loss, eval_dataloader, device)
         start_time = time.time()
 
         scheduler.step()
-        checkpoint(epoch=epoch, model_folder=model_folder, loss=loss, psnr=psnr)
+        checkpoint(model, optimizer, epoch=epoch, model_folder=model_folder, loss=loss, psnr=psnr)
 
         train_time += time.time() - start_time
         print(f"train time : {train_time:.3f}sec")
@@ -202,30 +204,10 @@ def start_train():
                 type='psnr',
                 epoch=epoch,
                 psnr=psnr,
-                time=train_time)
+                runtime=train_time)
 
     print(f"Average train time : {total_train_time / (args.epochs - args.load_num - 1):.3f}sec")
 
 
 if __name__ == '__main__':
-    start_train()
-
-
-
-
-
-sr = None
-for iteration, batch in enumerate(train_dataloader, 1):
-    input = batch[0].to(device)
-    input_ = batch[1].to(device)
-    print(type(input_), input.shape)
-    sr = model(input_)
-    break
-
-# imshow(input_[1].detach().cpu(), 'lr')
-# imshow(sr[1].detach().cpu(), 'sr')
-
-
-
-
-
+    start_train(_args)
