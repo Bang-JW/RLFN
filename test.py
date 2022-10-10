@@ -14,7 +14,7 @@ from model import rlfn
 def main():
     device = torch.device('cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu')
 
-    data_dir = os.getcwd() + '/data/' if args.on_local else '/home/shh950422/images/test/'
+    data_dir = os.getcwd() + '/data/' if args.on_local else '/home/shh950422/images/'
 
     test_dataloader = utils_data.set_dataloader(data_dir=data_dir, upscale_factor=args.upscale_factor, datatype='test')
 

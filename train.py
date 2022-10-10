@@ -133,7 +133,7 @@ def start_train(args):
     device = torch.device(
         'cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu')
 
-    data_dir = os.getcwd() + '/data/' if args.on_local else '/home/shh950422/images/train/'
+    data_dir = os.getcwd() + '/data/' if args.on_local else '/home/shh950422/images/'
 
     train_dataloader = utils_data.set_dataloader(
         data_dir=data_dir,
