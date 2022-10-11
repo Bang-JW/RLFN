@@ -44,8 +44,8 @@ class Dataset(object):
 
 def set_dataloader(image_size, upscale_factor, aug_factor, batch_size, datatype = 'train_HR'):
     #/home/shh950422/images/train/DIV2K_train_HR/
-    #root_dir = 'C:\\Users\\bjw97\PycharmProjects\RLFN_Final\data'
-    root_dir = '/home/shh950422/images/train/' 
+    root_dir = 'C:\\Users\\bjw97\PycharmProjects\RLFN\data'
+    #root_dir = '/home/shh950422/images/train/'
     data_dir = os.path.join(root_dir, 'DIV2K_train_HR')
 
     image_size = calculate_valid_crop_size(image_size, upscale_factor)

@@ -37,7 +37,8 @@ def train(epoch):
         loss = criterion(prediction, hr)
         epoch_loss += loss.item()
         loss.backward()
-        scheduler.step()
+        optimizer.step()
+
 
         print("===> Epoch[{}]({}/{}): Loss: {:.4f}".format(epoch, iteration, len(train_dataloader), loss.item()))
 
@@ -80,6 +81,7 @@ def start_train():
         start_time = time.time()
         train(epoch)
         validation()
+        scheduler.step()
         checkpoint(epoch)
 
         print("elapsed time :",(time.time() - start_time), "sec")
