@@ -7,6 +7,8 @@ import time
 from options import args as _args
 import csv
 
+os.environ['CUDA_DEVICE_ORDER']="PCI_BUS_ID"
+#os.environ['CUDA_VISIBLE_DEVICES']='2,3'
 
 def train(model, loss_f, optimizer, train_dataloader, epoch, loss_log_path, device):
     epoch_loss = 0
@@ -133,7 +135,7 @@ def start_train(args):
     device = torch.device(
         'cuda' if torch.cuda.is_available() else 'mps' if torch.backends.mps.is_available() else 'cpu')
 
-    data_dir = os.getcwd() + '/data/' if args.on_local else '/home/shh950422/images/'
+    data_dir = os.getcwd() + '/data/' if args.on_local else '/home/hardstacc/images/'
 
     train_dataloader = utils_data.set_dataloader(
         data_dir=data_dir,
@@ -152,11 +154,19 @@ def start_train(args):
         datatype='valid')
 
     print('===> Building model')
-    model = rlfn.RLFN(upscale=args.upscale_factor).to(device)
-
+    _model = rlfn.RLFN(upscale=args.upscale_factor).cuda()
+    model = torch.nn.DataParallel(_model).to(device)
+    #model = rlfn.RLFN(upscale=args.upscale_factor).to(device)
+    #model = torch.nn.DataParallel(model, device_ids =[1,2]).to(device)
     mae_loss = torch.nn.L1Loss()
     mse_loss = torch.nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=5e-4)
+
+    prefix = ' ' * 7
+    print(prefix + f'Device : {torch.cuda.is_available()}')
+    print(prefix + f'Device : {device}')
+    print(prefix + f'Current cuda device : {torch.cuda.current_device()}')
+    print(prefix + f'Count of Using GPUs : {torch.cuda.device_count()}')
 
     if args.load_num != -1:
         PATH = f'model_zoo/model_x{args.upscale_factor}_/epoch_{args.load_num}.pth'

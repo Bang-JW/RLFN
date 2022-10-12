@@ -51,6 +51,8 @@ def activation(act_type, inplace=True, neg_slope=0.05, n_prelu=1):
         layer = nn.LeakyReLU(neg_slope, inplace)
     elif act_type == 'prelu':
         layer = nn.PReLU(num_parameters=n_prelu, init=neg_slope)
+    elif act_type == 'swish':
+        layer = nn.SiLU()
     else:
         raise NotImplementedError(
             'activation layer [{:s}] is not found'.format(act_type))
@@ -153,7 +155,7 @@ class RLFB(nn.Module):
         self.c5 = conv_layer(in_channels, out_channels, 1)
         self.esa = ESA(esa_channels, out_channels, nn.Conv2d)
 
-        self.act = activation('lrelu', neg_slope=0.05)
+        self.act = activation('swish')
 
     def forward(self, x):
         out = (self.c1_r(x))

@@ -1,4 +1,5 @@
-# -*- coding: utf-8 -*-
+#
+#-*- coding: utf-8 -*-
 # Copyright 2022 ByteDance
 import torch.nn as nn
 from model import block
@@ -26,8 +27,8 @@ class RLFN(nn.Module):
         self.block_2 = block.RLFB(feature_channels)
         self.block_3 = block.RLFB(feature_channels)
         self.block_4 = block.RLFB(feature_channels)
-        # self.block_5 = block.RLFB(feature_channels)
-        # self.block_6 = block.RLFB(feature_channels)
+        self.block_5 = block.RLFB(feature_channels)
+        self.block_6 = block.RLFB(feature_channels)
 
         self.conv_2 = block.conv_layer(feature_channels,
                                        feature_channels,
@@ -44,11 +45,11 @@ class RLFN(nn.Module):
         out_b2 = self.block_2(out_b1)
         out_b3 = self.block_3(out_b2)
         out_b4 = self.block_4(out_b3)
-        # out_b5 = self.block_5(out_b4)
-        # out_b6 = self.block_6(out_b5)
+        out_b5 = self.block_5(out_b4)
+        out_b6 = self.block_6(out_b5)
 
-        # out_low_resolution = self.conv_2(out_b6) + out_feature
-        out_low_resolution = self.conv_2(out_b4) + out_feature
+        out_low_resolution = self.conv_2(out_b6) + out_feature
+        #out_low_resolution = self.conv_2(out_b4) + out_feature
         output = self.upsampler(out_low_resolution)
 
         return output
